@@ -2,5 +2,4 @@
 CodeBase for a telegram bot with pythontelegrambot library
 
 dp.add_handler(CommandHandler("start", start)) 
-dp.add_handler(CommandHandler(<nome 
-della funzione \funzione in telegram bot>,<funzione>))
+dp.add_handler(CommandHandler(<\funzione in telegram bot>,<funzione>))
