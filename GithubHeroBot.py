@@ -1,70 +1,130 @@
 # Token = 754353087:AAHRnA8fIIUT7FamQ0TRtLBDFcfqoOxSbqE
 # installare libreria python-telegram-bot
+"""Usage:
+Example of a bot-user conversation using ConversationHandler.
+Send /start to initiate the conversation.
+Press Ctrl-C on the command line or send a signal to the process to stop the
+bot."""
 
+from telegram import ReplyKeyboardMarkup
+from telegram.ext import (Updater, CommandHandler, MessageHandler, Filters, RegexHandler,
+                          ConversationHandler)
 
-from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 import logging
-import telegram
 
 # Enable logging
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
                     level=logging.INFO)
 
 logger = logging.getLogger(__name__)
-TOKEN = "754353087:AAHRnA8fIIUT7FamQ0TRtLBDFcfqoOxSbqE"
 
-# Define a few command handlers. These usually take the two arguments bot and
-# update. Error handlers also receive the raised TelegramError object in error.
+CHOOSING, TYPING_REPLY, TYPING_CHOICE = range(3)
+
+reply_keyboard = [['Age', 'Favourite colour'],
+                  ['Number of siblings', 'Something else...'],
+                  ['Done']]
+markup = ReplyKeyboardMarkup(reply_keyboard, one_time_keyboard=True)
+
+
+def facts_to_str(user_data):
+    facts = list()
+
+    for key, value in user_data.items():
+        facts.append('{} - {}'.format(key, value))
+
+    return "\n".join(facts).join(['\n', '\n'])
+
+
 def start(bot, update):
-    """Send a message when the command /start is issued."""
-    kb = [[telegram.KeyboardButton('/ti_comando')],
-          [telegram.KeyboardButton('/mi_comandi')]]
-    kb_markup = telegram.ReplyKeyboardMarkup(kb)
-    bot.send_message(chat_id=update.message.chat_id,
-                     text="Welcome in GithubHeroBot",
-                     reply_markup=kb_markup)
-    update.message.reply_text('Benvenuto in GithubHeroBot')
+    update.message.reply_text(
+        "Hi! My name is Doctor Botter. I will hold a more complex conversation with you. "
+        "Why don't you tell me something about yourself?",
+        reply_markup=markup)
+
+    return CHOOSING
 
 
-def help(bot, update):
-    """Send a message when the command /help is issued."""
-    update.message.reply_text('Help! dont ask me help')
+def regular_choice(bot, update, user_data):
+    text = update.message.text
+    user_data['choice'] = text
+    update.message.reply_text(
+        'Your {}? Yes, I would love to hear about that!'.format(text.lower()))
+
+    return TYPING_REPLY
 
 
-def echo(bot, update):
-    """Echo the user message."""
-    update.message.reply_text(update.message.text)
-    print(update.message.text)
+def custom_choice(bot, update):
+    update.message.reply_text('Alright, please send me the category first, '
+                              'for example "Most impressive skill"')
+
+    return TYPING_CHOICE
+
+
+def received_information(bot, update, user_data):
+    text = update.message.text
+    category = user_data['choice']
+    user_data[category] = text
+    del user_data['choice']
+
+    update.message.reply_text("Neat! Just so you know, this is what you already told me:"
+                              "{}"
+                              "You can tell me more, or change your opinion on something.".format(
+                                  facts_to_str(user_data)), reply_markup=markup)
+
+    return CHOOSING
+
+
+def done(bot, update, user_data):
+    if 'choice' in user_data:
+        del user_data['choice']
+
+    update.message.reply_text("I learned these facts about you:"
+                              "{}"
+                              "Until next time!".format(facts_to_str(user_data)))
+
+    user_data.clear()
+    return ConversationHandler.END
 
 
 def error(bot, update, error):
     """Log Errors caused by Updates."""
     logger.warning('Update "%s" caused error "%s"', update, error)
 
-def ti_comando(bot, update):
-    """Comando1"""
-    update.message.reply_text("Schiavo vai a zappare")
-
-def mi_comandi(bot, update):
-    """Comando2"""
-    update.message.reply_text("Non sai nemmeno quanto fa radice di 2, chi vuoi comandare?")
 
 def main():
-    """Start the bot."""
-    # Create the EventHandler and pass it your bot's token.
-    updater = Updater(TOKEN)
+    # Create the Updater and pass it your bot's token.
+    updater = Updater("754353087:AAHRnA8fIIUT7FamQ0TRtLBDFcfqoOxSbqE")
 
     # Get the dispatcher to register handlers
     dp = updater.dispatcher
 
-    # on different commands - answer in Telegram
-    dp.add_handler(CommandHandler("start", start))
-    dp.add_handler(CommandHandler("help", help))
-    dp.add_handler(CommandHandler("ti_comando", ti_comando))
-    dp.add_handler(CommandHandler("mi_comandi", mi_comandi))
+    # Add conversation handler with the states CHOOSING, TYPING_CHOICE and TYPING_REPLY
+    conv_handler = ConversationHandler(
+        entry_points=[CommandHandler('start', start)],
 
-    # on noncommand i.e message - echo the message on Telegram
-    dp.add_handler(MessageHandler(Filters.text, echo))
+        states={
+            CHOOSING: [RegexHandler('^(Age|Favourite colour|Number of siblings)$',
+                                    regular_choice,
+                                    pass_user_data=True),
+                       RegexHandler('^Something else...$',
+                                    custom_choice),
+                       ],
+
+            TYPING_CHOICE: [MessageHandler(Filters.text,
+                                           regular_choice,
+                                           pass_user_data=True),
+                            ],
+
+            TYPING_REPLY: [MessageHandler(Filters.text,
+                                          received_information,
+                                          pass_user_data=True),
+                           ],
+        },
+
+        fallbacks=[RegexHandler('^Done$', done, pass_user_data=True)]
+    )
+
+    dp.add_handler(conv_handler)
 
     # log all errors
     dp.add_error_handler(error)
